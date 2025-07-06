@@ -8,12 +8,12 @@ import { MessageCircleMore, Send, Smile } from "lucide-react";
 
 export default function ChatsLayout() {
   const chatPartners = [
-    { id: "uuid1", name: "Alice", avatarFile: "avatar.jpeg" },
-    { id: "uuid2", name: "Bob", avatarFile: "avatar.jpeg" },
-    { id: "uuid3", name: "John", avatarFile: "avatar.jpeg" },
-    { id: "uuid4", name: "Mark", avatarFile: "avatar.jpeg" },
-    { id: "uuid5", name: "Melody", avatarFile: "avatar.jpeg" },
-    { id: "uuid6", name: "Tyson", avatarFile: "avatar.jpeg" },
+    { id: "uuid1", name: "Alice", avatarFile: "avatar.jpeg", isOnline: true,lastMessage: 'Ok, see you!', lastMessageTime: '3:45 PM' },
+    { id: "uuid2", name: "Bob", avatarFile: "avatar.jpeg",lastMessage: 'Ok, see you!', lastMessageTime: '3:45 PM' },
+    { id: "uuid3", name: "John", avatarFile: "avatar.jpeg",lastMessage: 'Ok, see you!', lastMessageTime: '3:45 PM' },
+    { id: "uuid4", name: "Mark", avatarFile: "avatar.jpeg" , isOnline: true,lastMessage: 'Ok, see you!', lastMessageTime: '3:45 PM' },
+    { id: "uuid5", name: "Melody", avatarFile: "avatar.jpeg",lastMessage: 'Ok, see you!', lastMessageTime: '3:45 PM' },
+    { id: "uuid6", name: "Tyson", avatarFile: "avatar.jpeg",isOnline: true, lastMessage: 'Ok, see you!', lastMessageTime: '3:45 PM' },
   ];
 
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export default function ChatsLayout() {
                 {messages.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-muted-foreground animate-pulse space-y-2">
                     <MessageCircleMore className="h-8 w-8" />
-                    <span>Select a chat to start messaging</span>
+                    <span>No message yet</span>
                   </div>
                 ) : (
                   messages.map((msg, idx) => (

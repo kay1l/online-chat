@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -57,13 +58,15 @@ export function AddContactDialog({ onAdd }: AddContactDialogProps) {
         </div>
 
         <div className="mt-4 flex justify-end gap-2 border-t pt-3">
+          <DialogClose>
           <Button
             variant="ghost"
             className="w-24 cursor-pointer rounded-md hover:bg-blue-200 dark:hover:bg-gray-800"
-            onClick={() => setNewContactName("")}
+            // onClick={() => setNewContactName("")}
           >
             Cancel
           </Button>
+          </DialogClose>
           <Button
             variant="ghost"
             className="w-24 rounded-md text-black hover:bg-blue-200 cursor-pointer"
