@@ -2,8 +2,11 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { LogOut, MessageSquare, Pencil, Search } from "lucide-react";
+import { LogOut, Pencil, Search, UserPlus } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useState } from "react";
+import { AddContactDialog } from "@/custom_components/add_contact_dialog";
 
 interface SidebarProps {
   className?: string;
@@ -12,23 +15,28 @@ interface SidebarProps {
 }
 
 export function Sidebar({ className, chatPartners = [], onSelectChat }: SidebarProps) {
+  const [newContactName, setNewContactName] = useState("");
+
+  const handleAddContact = () => {
+    if (newContactName.trim()) {
+      console.log("Add contact:", newContactName);
+      // TODO: Call Supabase / update state
+      setNewContactName("");
+    }
+  };
+
   return (
-    <aside
-      className={cn("flex h-screen w-64 flex-col border-r p-4", className)}
-    >
+    <aside className={cn("flex h-screen w-64 flex-col border-r p-4", className)}>
       <div className="mb-4 mt-6 flex items-center justify-between">
         <div className="flex items-center gap-2 text-xl font-bold text-primary">
-          <img
-            src="/images/icon.jpeg"
-            alt="Image"
-            className="h-10 w-10 object-contain dark:brightness-[0.2] cursor-pointer dark:grayscale"
-          />
+          <img src="/images/icon.jpeg" alt="Image" className="h-10 w-10 object-contain dark:brightness-[0.2] dark:grayscale cursor-pointer" />
           <span className="text-lg">ChatApp</span>
         </div>
-        <Button className="cursor-pointer" variant="ghost" size="icon">
-          <Pencil className="h-8 w-8 cursor-pointer" />
-          <span className="sr-only">New chat</span>
-        </Button>
+
+    <AddContactDialog onAdd={(name) => {
+         console.log("New contact:", name);
+    }} />
+
       </div>
 
       {/* Search */}
@@ -38,11 +46,11 @@ export function Sidebar({ className, chatPartners = [], onSelectChat }: SidebarP
         </span>
         <Input
           placeholder="Search chats..."
-          className="h-8 pl-8 rounded-md border border-border bg-background text-sm"
+          className="h-10 pl-8 rounded-md border  border-border bg-background text-sm"
         />
       </div>
 
-      {/* Chat partners list */}
+      {/* Chat list */}
       <nav className="flex-1 space-y-1 overflow-y-auto">
         {chatPartners.length === 0 ? (
           <div className="text-sm text-muted-foreground">No chats yet</div>
@@ -59,10 +67,7 @@ export function Sidebar({ className, chatPartners = [], onSelectChat }: SidebarP
             >
               <Avatar className="h-12 w-12">
                 {partner.avatarFile ? (
-                  <AvatarImage
-                    src={`/images/${partner.avatarFile}`}
-                    alt={partner.name}
-                  />
+                  <AvatarImage src={`/images/${partner.avatarFile}`} alt={partner.name} />
                 ) : (
                   <AvatarFallback className="text-lg">
                     {partner.name.charAt(0).toUpperCase()}
