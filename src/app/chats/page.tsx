@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/app-sidebar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { MessageCircleMore, Send, Smile } from "lucide-react";
+import Image from "next/image";
 
 export default function ChatsLayout() {
   const chatPartners = [

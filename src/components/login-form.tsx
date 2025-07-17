@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { supabase } from "@/lib/supaBaseClient"
-import { z } from "zod"
+import { setAuthToken } from "@/lib/axios"; 
 import { loginSchema } from "@/lib/validations/loginSchema"
 import { useRouter } from "next/navigation"
+import { endpoints } from "@/lib/endpoints";
+import {API, } from "@/lib/axios"
 
 
 export function LoginForm({
@@ -26,37 +27,39 @@ export function LoginForm({
       [e.target.id]: e.target.value
     }))
   }
-
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setErrorMsg(null)
-    setSuccessMsg(null)
-
-    const result = loginSchema.safeParse(formData)
-    if (!result.success) {
-      setErrorMsg(result.error.errors[0]?.message || "Invalid input")
-      return
+    e.preventDefault();
+    try {
+      loginSchema.parse(formData);
+  
+      const response = await API.post(endpoints.auth.login, formData);
+  
+      const token = response.data?.token; 
+  
+      if (token) {
+        localStorage.setItem("token", token); 
+        setAuthToken(token); 
+      }
+  
+      setSuccessMsg("Login successful!");
+      setErrorMsg(null);
+      router.push("/chats");
+    } catch (err: any) {
+      if (err.response) {
+        setErrorMsg(err.response.data.message || "Login failed");
+      } else {
+        setErrorMsg(err.message || "Something went wrong");
+      }
+      setSuccessMsg(null);
     }
-
-    const { email, password } = result.data
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    })
-
-    if (error) {
-      setErrorMsg(error.message)
-    } else {
-      setSuccessMsg("Login successful!")
-      router.push("/chats")
-    }
-  }
+  };
+  
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden p-0">
         <CardContent className="grid p-0 md:grid-cols-2">
-          <form className="p-6 md:p-8" onSubmit={handleSubmit}>
+          <form className="p-6 md:p-8" onSubmit={handleSubmit} >
             <div className="flex flex-col gap-4">
               <div className="flex flex-col items-center text-center">
                 <h1 className="text-2xl font-bold">Welcome back</h1>

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { registerSchema } from "@/lib/validations/registerSchema";
 import { useState } from "react";
-import { supabase } from "@/lib/supaBaseClient";
+// import { supabase } from "@/lib/supaBaseClient";
 
 export function RegisterForm({
   className,
@@ -29,45 +29,45 @@ export function RegisterForm({
     }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-    setSuccessMsg(null);
+  // const handleSubmit = async (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   setErrorMsg(null);
+  //   setSuccessMsg(null);
 
-    const result = registerSchema.safeParse(formData);
-    if (!result.success) {
-      const firstError = result.error.errors[0]?.message;
-      setErrorMsg(firstError || "Invalid input");
-      return;
-    }
+  //   const result = registerSchema.safeParse(formData);
+  //   if (!result.success) {
+  //     const firstError = result.error.errors[0]?.message;
+  //     setErrorMsg(firstError || "Invalid input");
+  //     return;
+  //   }
 
-    const { username, email, password } = result.data;
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { username }
-      }
-    });
+  //   const { username, email, password } = result.data;
+  //   const { error } = await supabase.auth.signUp({
+  //     email,
+  //     password,
+  //     options: {
+  //       data: { username }
+  //     }
+  //   });
 
-    if (error) {
-      setErrorMsg(error.message);
-    } else {
-      setSuccessMsg("Success! Check your email to confirm your account.");
-      setFormData({
-        username: "",
-        email: "",
-        password: "",
-        confirmPassword: ""
-      });
-    }
-  };
+  //   if (error) {
+  //     setErrorMsg(error.message);
+  //   } else {
+  //     setSuccessMsg("Success! Check your email to confirm your account.");
+  //     setFormData({
+  //       username: "",
+  //       email: "",
+  //       password: "",
+  //       confirmPassword: ""
+  //     });
+  //   }
+  // };
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden p-0">
         <CardContent className="grid p-0 md:grid-cols-2">
-          <form className="p-6 md:p-8" onSubmit={handleSubmit}>
+          <form className="p-6 md:p-8">
             <div className="flex flex-col gap-4">
               <div className="flex flex-col items-center text-center">
                 <h1 className="text-2xl font-bold">Create your account</h1>
