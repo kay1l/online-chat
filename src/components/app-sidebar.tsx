@@ -9,6 +9,9 @@ import Link from "next/link";
 import { AddContactDialog } from "@/custom_components/add_contact_dialog";
 import { EditProfileDialog } from "@/custom_components/edit_profile_dialog";
 import { cn } from "@/lib/utils";
+import { logout } from "@/helpers/auth";
+import { useRouter } from "next/navigation";
+
 interface SidebarProps {
   className?: string;
   chatPartners?: {
@@ -22,9 +25,19 @@ interface SidebarProps {
   onSelectChat?: (id: string) => void;
 }
 
+
 export function Sidebar({ chatPartners = [], onSelectChat }: SidebarProps) {
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.push("/"); 
+    } catch (error) {
+      console.error("Logout error", error);
+    }
+  };
   const SidebarContent = (
     <>
       <div className="mb-4 mt-6 flex items-center justify-between">
@@ -123,7 +136,7 @@ export function Sidebar({ chatPartners = [], onSelectChat }: SidebarProps) {
       <Button
         variant="outline"
         className="mt-4 w-full flex items-center justify-center cursor-pointer gap-2 text-red-600 border-red-300 hover:bg-red-50"
-        onClick={() => console.log("Logout clicked")}
+        onClick={handleLogout}
       >
         <LogOut className="h-4 w-4" />
         Logout
