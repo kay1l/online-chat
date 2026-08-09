@@ -50,3 +50,11 @@ export const dayLabel = (value: string): string => {
     ? date.toLocaleDateString([], { weekday: "long" })
     : date.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
 };
+
+/** "12 KB" / "3.4 MB" for attachment labels. */
+export const formatBytes = (bytes: number | null): string => {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};

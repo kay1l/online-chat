@@ -32,11 +32,26 @@ export const fetchMessages = async (contactId: number): Promise<Message[]> => {
   return data;
 };
 
-export const sendMessage = async (receiverId: number, content: string): Promise<Message> => {
-  const { data } = await API.post<Message>(endpoints.messages.send, {
-    receiver_id: receiverId,
-    content,
-  });
+/** Sends text, a file, or both. Switches to multipart only when a file is attached. */
+export const sendMessage = async (
+  receiverId: number,
+  content: string,
+  attachment?: File
+): Promise<Message> => {
+  if (!attachment) {
+    const { data } = await API.post<Message>(endpoints.messages.send, {
+      receiver_id: receiverId,
+      content,
+    });
+    return data;
+  }
+
+  const form = new FormData();
+  form.append("receiver_id", String(receiverId));
+  if (content) form.append("content", content);
+  form.append("attachment", attachment);
+
+  const { data } = await API.post<Message>(endpoints.messages.send, form);
   return data;
 };
 

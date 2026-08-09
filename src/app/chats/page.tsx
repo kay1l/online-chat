@@ -3,9 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, CheckCheck, Loader2, MessageCircleMore, Send } from "lucide-react";
+import {
+  Check,
+  CheckCheck,
+  Image as ImageIcon,
+  Loader2,
+  MessageCircleMore,
+  Paperclip,
+  Send,
+  X,
+} from "lucide-react";
 import { Sidebar } from "@/components/app-sidebar";
 import { Navbar } from "@/custom_components/navbar";
+import { MessageAttachment } from "@/custom_components/message_attachment";
+import { ImageLightbox } from "@/custom_components/image_lightbox";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -13,7 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/custom_components/app_wrapper";
 import { fetchContactRequests, fetchContacts, fetchMessages, sendMessage } from "@/helpers/chat";
 import { getErrorMessage } from "@/lib/axios";
-import { clockTime, dayLabel, isSameDay, relativeTime } from "@/lib/format";
+import { clockTime, dayLabel, formatBytes, isSameDay, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Contact, ContactRequest, Message } from "@/lib/types/models";
 
@@ -21,7 +32,17 @@ import type { Contact, ContactRequest, Message } from "@/lib/types/models";
 const CONTACTS_POLL_MS = 5000;
 const MESSAGES_POLL_MS = 2500;
 
-type PendingMessage = { tempId: number; content: string; created_at: string };
+/** Mirrors MessageController::MAX_ATTACHMENT_KB. */
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+type PendingMessage = {
+  tempId: number;
+  content: string;
+  created_at: string;
+  file?: File;
+  /** Local object URL so an image shows immediately while it uploads. */
+  previewUrl?: string;
+};
 
 /** A message plus how it should be laid out relative to its neighbours. */
 type ThreadItem = {
@@ -45,8 +66,13 @@ export default function ChatsPage() {
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
+  const [previewMessage, setPreviewMessage] = useState<Message | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -109,10 +135,15 @@ export default function ChatsPage() {
         id: -item.tempId,
         sender_id: user.id,
         receiver_id: activeContactId ?? 0,
-        content: item.content,
+        content: item.content || null,
         read_at: null,
         created_at: item.created_at,
         updated_at: item.created_at,
+        attachment_url: item.previewUrl ?? null,
+        attachment_name: item.file?.name ?? null,
+        attachment_mime: item.file?.type ?? null,
+        attachment_size: item.file?.size ?? null,
+        attachment_is_image: item.file?.type.startsWith("image/") ?? false,
         pending: true,
       })),
     ];
@@ -136,10 +167,50 @@ export default function ChatsPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [thread.length]);
 
+  // An optimistic message is swapped for the saved one once the upload lands, and
+  // its local object URL is revoked — close the preview rather than show a broken
+  // image. Saved messages keep their id across polls, so this leaves them alone.
+  useEffect(() => {
+    if (!previewMessage) return;
+    if (!thread.some((item) => item.message.id === previewMessage.id)) {
+      setPreviewMessage(null);
+    }
+  }, [thread, previewMessage]);
+
+  /** Clearing the value lets the same file be chosen twice in a row. */
+  const resetPickers = () => {
+    if (photoInputRef.current) photoInputRef.current.value = "";
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const clearAttachment = () => {
+    setAttachment(null);
+    setAttachmentPreview((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return null;
+    });
+    resetPickers();
+  };
+
+  const handleFilePicked = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      toast.error(`"${file.name}" is larger than ${formatBytes(MAX_ATTACHMENT_BYTES)}`);
+      event.target.value = "";
+      return;
+    }
+
+    setAttachment(file);
+    setAttachmentPreview(file.type.startsWith("image/") ? URL.createObjectURL(file) : null);
+  };
+
   const handleSelectChat = (id: number) => {
     setActiveContactId(id);
     setMessages([]);
     setPending([]);
+    clearAttachment();
     // The badge clears as soon as the API marks the thread read.
     setContacts((prev) =>
       prev.map((contact) => (contact.id === id ? { ...contact, unread_count: 0 } : contact))
@@ -148,14 +219,25 @@ export default function ChatsPage() {
 
   const handleSend = async () => {
     const content = inputValue.trim();
-    if (content === "" || activeContactId === null) return;
+    const file = attachment;
+
+    if ((content === "" && !file) || activeContactId === null) return;
 
     const tempId = Date.now();
-    setPending((prev) => [...prev, { tempId, content, created_at: new Date().toISOString() }]);
+    // The preview URL is handed to the optimistic message, which owns it from here.
+    const previewUrl = attachmentPreview ?? undefined;
+
+    setPending((prev) => [
+      ...prev,
+      { tempId, content, created_at: new Date().toISOString(), file: file ?? undefined, previewUrl },
+    ]);
     setInputValue("");
+    setAttachment(null);
+    setAttachmentPreview(null);
+    resetPickers();
 
     try {
-      const message = await sendMessage(activeContactId, content);
+      const message = await sendMessage(activeContactId, content, file ?? undefined);
       setMessages((prev) =>
         prev.some((existing) => existing.id === message.id) ? prev : [...prev, message]
       );
@@ -163,8 +245,13 @@ export default function ChatsPage() {
     } catch (err) {
       toast.error(getErrorMessage(err, "Message could not be sent"));
       setInputValue(content);
+      if (file) {
+        setAttachment(file);
+        setAttachmentPreview(previewUrl ?? null);
+      }
     } finally {
       setPending((prev) => prev.filter((item) => item.tempId !== tempId));
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
     }
   };
 
@@ -248,86 +335,173 @@ export default function ChatsPage() {
                   </div>
                 ) : (
                   <div className="mx-auto max-w-3xl space-y-1">
-                    {thread.map(({ message, mine, showDivider, endsRun }) => (
-                      <div key={message.id}>
-                        {showDivider && (
-                          <div className="my-4 flex items-center gap-3">
-                            <div className="h-px flex-1 bg-border" />
-                            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                              {dayLabel(message.created_at)}
-                            </span>
-                            <div className="h-px flex-1 bg-border" />
-                          </div>
-                        )}
+                    {thread.map(({ message, mine, showDivider, endsRun }) => {
+                      // An image with no caption is shown without bubble chrome.
+                      const bareImage = message.attachment_is_image && !message.content;
 
-                        <div
-                          className={cn(
-                            "flex items-end gap-2",
-                            mine ? "justify-end" : "justify-start",
-                            endsRun ? "mb-2" : "mb-0.5"
+                      return (
+                        <div key={message.id}>
+                          {showDivider && (
+                            <div className="my-4 flex items-center gap-3">
+                              <div className="h-px flex-1 bg-border" />
+                              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                {dayLabel(message.created_at)}
+                              </span>
+                              <div className="h-px flex-1 bg-border" />
+                            </div>
                           )}
-                        >
-                          {!mine &&
-                            (endsRun ? (
-                              <Avatar className="h-7 w-7 shrink-0">
-                                {activeContact.avatar_url && (
-                                  <AvatarImage
-                                    src={activeContact.avatar_url}
-                                    alt={activeContact.name}
-                                  />
-                                )}
-                                <AvatarFallback className="text-[10px]">
-                                  {activeContact.name.charAt(0).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                            ) : (
-                              <div className="w-7 shrink-0" />
-                            ))}
 
                           <div
                             className={cn(
-                              "flex max-w-[75%] flex-col gap-1 sm:max-w-md",
-                              mine ? "items-end" : "items-start"
+                              "flex items-end gap-2",
+                              mine ? "justify-end" : "justify-start",
+                              endsRun ? "mb-2" : "mb-0.5"
                             )}
                           >
+                            {!mine &&
+                              (endsRun ? (
+                                <Avatar className="h-7 w-7 shrink-0">
+                                  {activeContact.avatar_url && (
+                                    <AvatarImage
+                                      src={activeContact.avatar_url}
+                                      alt={activeContact.name}
+                                    />
+                                  )}
+                                  <AvatarFallback className="text-[10px]">
+                                    {activeContact.name.charAt(0).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                              ) : (
+                                <div className="w-7 shrink-0" />
+                              ))}
+
                             <div
                               className={cn(
-                                "rounded-2xl px-3.5 py-2 text-sm leading-relaxed break-words",
-                                mine
-                                  ? "bg-brand text-brand-foreground"
-                                  : "bg-muted text-foreground",
-                                mine && endsRun && "rounded-br-sm",
-                                !mine && endsRun && "rounded-bl-sm",
-                                message.pending && "opacity-60"
+                                "flex max-w-[75%] flex-col gap-1 sm:max-w-md",
+                                mine ? "items-end" : "items-start"
                               )}
                             >
-                              {message.content}
-                            </div>
-
-                            {endsRun && (
-                              <div className="flex items-center gap-1 px-1 text-[11px] text-muted-foreground">
-                                <span>{clockTime(message.created_at)}</span>
-                                {mine &&
-                                  (message.pending ? (
-                                    <span>· Sending</span>
-                                  ) : message.read_at ? (
-                                    <CheckCheck className="h-3.5 w-3.5 text-brand" />
-                                  ) : (
-                                    <Check className="h-3.5 w-3.5" />
-                                  ))}
+                              <div
+                                className={cn(
+                                  "overflow-hidden rounded-2xl text-sm leading-relaxed break-words",
+                                  // A bare image needs no bubble behind it.
+                                  bareImage
+                                    ? "bg-transparent"
+                                    : mine
+                                      ? "bg-brand text-brand-foreground"
+                                      : "bg-muted text-foreground",
+                                  !bareImage && "px-3.5 py-2",
+                                  mine && endsRun && "rounded-br-sm",
+                                  !mine && endsRun && "rounded-bl-sm",
+                                  message.pending && "opacity-60"
+                                )}
+                              >
+                                {message.attachment_url && (
+                                  <div className={cn(message.content && "mb-2")}>
+                                    <MessageAttachment
+                                    message={message}
+                                    mine={mine}
+                                    onPreview={setPreviewMessage}
+                                  />
+                                  </div>
+                                )}
+                                {message.content}
                               </div>
-                            )}
+
+                              {endsRun && (
+                                <div className="flex items-center gap-1 px-1 text-[11px] text-muted-foreground">
+                                  <span>{clockTime(message.created_at)}</span>
+                                  {mine &&
+                                    (message.pending ? (
+                                      <span>· Sending</span>
+                                    ) : message.read_at ? (
+                                      <CheckCheck className="h-3.5 w-3.5 text-brand" />
+                                    ) : (
+                                      <Check className="h-3.5 w-3.5" />
+                                    ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <div ref={bottomRef} />
                   </div>
                 )}
               </div>
 
               <div className="shrink-0 border-t px-4 py-3">
+                {attachment && (
+                  <div className="mx-auto mb-2 flex max-w-3xl items-center gap-3 rounded-xl border bg-muted/50 p-2">
+                    {attachmentPreview ? (
+                      // Local object URL for the staged file.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={attachmentPreview}
+                        alt=""
+                        className="h-11 w-11 shrink-0 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-background">
+                        <Paperclip className="h-4 w-4 text-muted-foreground" />
+                      </span>
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{attachment.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatBytes(attachment.size)}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={clearAttachment}
+                      className="cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent"
+                      aria-label="Remove attachment"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+
                 <div className="mx-auto flex max-w-3xl items-center gap-2">
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    hidden
+                    accept="image/*"
+                    onChange={handleFilePicked}
+                  />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    hidden
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+                    onChange={handleFilePicked}
+                  />
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 shrink-0 cursor-pointer rounded-full text-muted-foreground hover:text-brand"
+                    onClick={() => photoInputRef.current?.click()}
+                    aria-label="Send a photo"
+                    title="Send a photo"
+                  >
+                    <ImageIcon className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 shrink-0 cursor-pointer rounded-full text-muted-foreground hover:text-brand"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Send a file"
+                    title="Send a file"
+                  >
+                    <Paperclip className="h-5 w-5" />
+                  </Button>
                   <Input
                     placeholder={`Message ${activeContact.name}...`}
                     value={inputValue}
@@ -344,7 +518,7 @@ export default function ChatsPage() {
                     size="icon"
                     className="h-11 w-11 shrink-0 cursor-pointer rounded-full bg-brand text-brand-foreground hover:bg-brand/90"
                     onClick={() => void handleSend()}
-                    disabled={inputValue.trim() === ""}
+                    disabled={inputValue.trim() === "" && !attachment}
                     aria-label="Send message"
                   >
                     <Send className="h-4 w-4" />
@@ -369,6 +543,8 @@ export default function ChatsPage() {
           )}
         </div>
       </div>
+
+      <ImageLightbox message={previewMessage} onClose={() => setPreviewMessage(null)} />
     </div>
   );
 }

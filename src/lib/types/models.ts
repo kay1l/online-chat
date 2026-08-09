@@ -23,10 +23,17 @@ export type Message = {
   id: number;
   sender_id: number;
   receiver_id: number;
-  content: string;
+  /** Null when the message is an attachment with no caption. */
+  content: string | null;
   read_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Signed, expiring URL — usable directly as an <img> src. */
+  attachment_url: string | null;
+  attachment_name: string | null;
+  attachment_mime: string | null;
+  attachment_size: number | null;
+  attachment_is_image: boolean;
   /** Set on optimistic messages that have not been acknowledged by the API yet. */
   pending?: boolean;
 };
