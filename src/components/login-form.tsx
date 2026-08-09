@@ -1,65 +1,60 @@
-"use client"
-import { useState } from "react"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { setAuthToken } from "@/lib/axios"; 
-import { loginSchema } from "@/lib/validations/loginSchema"
-import { useRouter } from "next/navigation"
-import { endpoints } from "@/lib/endpoints";
-import {API, } from "@/lib/axios"
+"use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import Image from "next/image";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { loginSchema } from "@/lib/validations/loginSchema";
+import { login } from "@/helpers/auth";
+import { getErrorMessage } from "@/lib/axios";
+import { useAuth } from "@/custom_components/app_wrapper";
 
-export function LoginForm({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
+export function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
   const router = useRouter();
-  const [formData, setFormData] = useState({ email: "", password: "" })
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const { setUser } = useAuth();
+  const [formData, setFormData] = useState({ email: "", password: "" });
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({
       ...prev,
-      [e.target.id]: e.target.value
-    }))
-  }
+      [e.target.id]: e.target.value,
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg(null);
+
+    const parsed = loginSchema.safeParse(formData);
+    if (!parsed.success) {
+      setErrorMsg(parsed.error.issues[0]?.message ?? "Invalid input");
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      loginSchema.parse(formData);
-  
-      const response = await API.post(endpoints.auth.login, formData);
-  
-      const token = response.data?.token; 
-  
-      if (token) {
-        localStorage.setItem("token", token); 
-        setAuthToken(token); 
-      }
-  
-      setSuccessMsg("Login successful!");
-      setErrorMsg(null);
+      const { user } = await login(parsed.data.email, parsed.data.password);
+      setUser(user);
       router.push("/chats");
-    } catch (err: any) {
-      if (err.response) {
-        setErrorMsg(err.response.data.message || "Login failed");
-      } else {
-        setErrorMsg(err.message || "Something went wrong");
-      }
-      setSuccessMsg(null);
+    } catch (err) {
+      setErrorMsg(getErrorMessage(err, "Login failed"));
+    } finally {
+      setSubmitting(false);
     }
   };
-  
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden p-0">
         <CardContent className="grid p-0 md:grid-cols-2">
-          <form className="p-6 md:p-8" onSubmit={handleSubmit} >
+          <form className="p-6 md:p-8" onSubmit={handleSubmit}>
             <div className="flex flex-col gap-4">
               <div className="flex flex-col items-center text-center">
                 <h1 className="text-2xl font-bold">Welcome back</h1>
@@ -69,7 +64,6 @@ export function LoginForm({
               </div>
 
               {errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}
-              {successMsg && <p className="text-sm text-green-600">{successMsg}</p>}
 
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
@@ -87,12 +81,6 @@ export function LoginForm({
               <div className="grid gap-2">
                 <div className="flex items-center">
                   <Label htmlFor="password">Password</Label>
-                  <a
-                    href="#"
-                    className="ml-auto text-sm underline-offset-2 hover:underline"
-                  >
-                    Forgot your password?
-                  </a>
                 </div>
                 <Input
                   id="password"
@@ -104,28 +92,30 @@ export function LoginForm({
                 />
               </div>
 
-              <Button type="submit" className="w-full">
-                Login
+              <Button type="submit" className="w-full cursor-pointer" disabled={submitting}>
+                {submitting ? "Logging in..." : "Login"}
               </Button>
 
               <div className="text-center text-sm mt-1">
                 Don&apos;t have an account?{" "}
-                <a href="/register" className="underline underline-offset-4">
+                <Link href="/register" className="underline underline-offset-4">
                   Sign up
-                </a>
+                </Link>
               </div>
             </div>
           </form>
 
           <div className="relative hidden md:block">
-            <img
+            <Image
               src="/images/icon.jpeg"
-              alt="Image"
+              alt="NexChat"
+              width={600}
+              height={600}
               className="h-full w-full object-contain dark:brightness-[0.2] dark:grayscale"
             />
           </div>
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

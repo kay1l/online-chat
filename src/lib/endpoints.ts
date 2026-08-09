@@ -1,25 +1,30 @@
 import { EndpointType } from "./types/endpointtypes";
 
+export { API_BASE_URL } from "./axios";
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
-
+// Paths are relative to the axios instance's baseURL (which already includes /api).
 export const endpoints: EndpointType = {
   auth: {
-    login: `${API_BASE_URL}/login`,
-    register: `${API_BASE_URL}/register`,
-    logout: `${API_BASE_URL}/logout`,
-    me: `${API_BASE_URL}/me`,
+    login: "/login",
+    register: "/register",
+    logout: "/logout",
+    me: "/me",
+    updateProfile: "/me",
+  },
+
+  users: {
+    search: (query: string) => `/users/search?q=${encodeURIComponent(query)}`,
   },
 
   contacts: {
-    list: `${API_BASE_URL}/contacts`,
-    create: `${API_BASE_URL}/contacts`,
-    delete: (id: number | string) => `${API_BASE_URL}/contacts/${id}`,
+    list: "/contacts",
+    create: "/contacts",
+    delete: (id: number | string) => `/contacts/${id}`,
   },
 
   messages: {
-    fetch: (contactId: number | string) => `${API_BASE_URL}/messages/${contactId}`,
-    send: `${API_BASE_URL}/messages`,
-    markAsRead: (id: number | string) => `${API_BASE_URL}/messages/${id}/read`,
+    fetch: (contactId: number | string) => `/messages/${contactId}`,
+    send: "/messages",
+    markAsRead: (id: number | string) => `/messages/${id}/read`,
   },
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogTrigger,
@@ -13,56 +13,75 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Pencil } from "lucide-react";
+import { updateProfile } from "@/helpers/auth";
+import { getErrorMessage } from "@/lib/axios";
+import type { User } from "@/lib/types/models";
 
 interface EditProfileDialogProps {
-  initialUsername: string;
-  initialEmail: string;
-  initialAvatar?: string;
-  onSave: (data: {
-    username: string;
-    email: string;
-    avatarFile?: File;
-  }) => void;
+  user: User;
+  onSaved: (user: User) => void;
   children: React.ReactNode;
 }
 
-export function EditProfileDialog({
-  initialUsername,
-  initialEmail,
-  initialAvatar,
-  onSave,
-  children,
-}: EditProfileDialogProps) {
-  const [username, setUsername] = useState(initialUsername);
-  const [email, setEmail] = useState(initialEmail);
-  const [avatarPreview, setAvatarPreview] = useState(
-    initialAvatar || "/images/default-avatar.png"
-  );
+const FALLBACK_AVATAR = "/images/avatar.jpeg";
+
+export function EditProfileDialog({ user, onSaved, children }: EditProfileDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(user.name);
+  const [email, setEmail] = useState(user.email);
+  const [avatarPreview, setAvatarPreview] = useState(user.avatar_url ?? FALLBACK_AVATAR);
   const [avatarFile, setAvatarFile] = useState<File | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Reset to the current profile whenever the dialog is (re)opened.
+  useEffect(() => {
+    if (!open) return;
+    setName(user.name);
+    setEmail(user.email);
+    setAvatarPreview(user.avatar_url ?? FALLBACK_AVATAR);
+    setAvatarFile(undefined);
+    setError(null);
+  }, [open, user]);
+
+  // Object URLs for the local preview have to be released manually.
+  useEffect(() => {
+    if (!avatarFile) return;
+    const objectUrl = URL.createObjectURL(avatarFile);
+    setAvatarPreview(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [avatarFile]);
+
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setAvatarFile(file);
-      setAvatarPreview(URL.createObjectURL(file));
+    const file = e.target.files?.[0];
+    if (file) setAvatarFile(file);
+  };
+
+  const handleSave = async () => {
+    if (name.trim() === "" || email.trim() === "") {
+      setError("Name and email are required");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updated = await updateProfile({
+        name: name.trim(),
+        email: email.trim(),
+        avatar: avatarFile,
+      });
+      onSaved(updated);
+      setOpen(false);
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not save profile"));
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleSave = () => {
-    if (username.trim() === "" || email.trim() === "") return;
-    onSave({ username: username.trim(), email: email.trim(), avatarFile });
-  };
-
-  const handleCancel = () => {
-    setUsername(initialUsername);
-    setEmail(initialEmail);
-    setAvatarPreview(initialAvatar || "/images/default-avatar.png");
-    setAvatarFile(undefined);
-  };
-
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
 
       <DialogContent className="sm:max-w-sm rounded-lg">
@@ -75,10 +94,12 @@ export function EditProfileDialog({
             className="relative cursor-pointer"
             onClick={() => fileInputRef.current?.click()}
           >
+            {/* Plain <img>: the source is a blob: URL or an API-hosted file. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={avatarPreview}
-              alt="Avatar Preview"
-              className="h-30 w-30 rounded-full object-cover border"
+              alt="Avatar preview"
+              className="h-28 w-28 rounded-full object-cover border"
             />
             <span className="absolute bottom-0 right-0 rounded-full bg-blue-600 p-1">
               <Pencil className="h-3 w-3 text-white" />
@@ -93,11 +114,13 @@ export function EditProfileDialog({
           />
         </div>
 
+        {error && <p className="text-center text-sm text-red-600">{error}</p>}
+
         <div className="space-y-2 mt-4">
           <Input
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             className="h-10 text-base focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
           />
           <Input
@@ -120,10 +143,11 @@ export function EditProfileDialog({
           </DialogClose>
           <Button
             variant="ghost"
-            className="w-24 rounded-md text-black hover:bg-blue-200 cursor-pointer"
+            className="w-24 rounded-md text-blue-600 hover:bg-blue-200 cursor-pointer"
+            disabled={saving}
             onClick={handleSave}
           >
-            Save
+            {saving ? "Saving..." : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>

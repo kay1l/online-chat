@@ -1,35 +1,86 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { UserPlus } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Loader2, UserPlus } from "lucide-react";
+import { addContact, searchUsers } from "@/helpers/chat";
+import { getErrorMessage } from "@/lib/axios";
+import type { SearchResult } from "@/lib/types/models";
 
 interface AddContactDialogProps {
-  onAdd: (name: string) => void;
+  onAdded: () => void;
 }
 
-export function AddContactDialog({ onAdd }: AddContactDialogProps) {
-  const [newContactName, setNewContactName] = useState("");
+export function AddContactDialog({ onAdded }: AddContactDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [addingId, setAddingId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleAddContact = () => {
-    if (newContactName.trim() === "") return;
-    onAdd(newContactName.trim());
-    setNewContactName("");
-    // Optionally close the dialog (you can control this with a state if desired)
-    // or let parent handle re-render
+  // Debounced search so we aren't firing a request per keystroke.
+  useEffect(() => {
+    if (!open) return;
+
+    const term = query.trim();
+    if (term === "") {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        setResults(await searchUsers(term));
+        setError(null);
+      } catch (err) {
+        setError(getErrorMessage(err, "Search failed"));
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [query, open]);
+
+  const handleAdd = async (userId: number) => {
+    setAddingId(userId);
+    try {
+      await addContact(userId);
+      setResults((prev) => prev.filter((result) => result.id !== userId));
+      setQuery("");
+      setOpen(false);
+      onAdded();
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not add contact"));
+    } finally {
+      setAddingId(null);
+    }
   };
 
   return (
-    <Dialog>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          setQuery("");
+          setResults([]);
+          setError(null);
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button
           variant="ghost"
@@ -43,37 +94,56 @@ export function AddContactDialog({ onAdd }: AddContactDialogProps) {
 
       <DialogContent className="sm:max-w-sm rounded-lg">
         <DialogHeader className="text-center">
-          <DialogTitle className="text-xl font-bold">
-            Add New Contact
-          </DialogTitle>
+          <DialogTitle className="text-xl font-bold">Add New Contact</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-2 mt-2">
           <Input
-            placeholder="Contact username"
-            value={newContactName}
-            onChange={(e) => setNewContactName(e.target.value)}
-            className="h-15 text-base transition-all duration-300 ease-in-out focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+            autoFocus
+            placeholder="Search by name or email"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="h-12 text-base transition-all duration-300 ease-in-out focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
           />
         </div>
 
-        <div className="mt-4 flex justify-end gap-2 border-t pt-3">
-          <DialogClose>
-          <Button
-            variant="ghost"
-            className="w-24 cursor-pointer rounded-md hover:bg-blue-200 dark:hover:bg-gray-800"
-            // onClick={() => setNewContactName("")}
-          >
-            Cancel
-          </Button>
-          </DialogClose>
-          <Button
-            variant="ghost"
-            className="w-24 rounded-md text-black hover:bg-blue-200 cursor-pointer"
-            onClick={handleAddContact}
-          >
-            Add
-          </Button>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="mt-2 max-h-64 space-y-1 overflow-y-auto">
+          {searching && (
+            <div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Searching...
+            </div>
+          )}
+
+          {!searching && query.trim() !== "" && results.length === 0 && (
+            <p className="p-2 text-sm text-muted-foreground">No users found.</p>
+          )}
+
+          {results.map((result) => (
+            <div
+              key={result.id}
+              className="flex items-center gap-3 rounded-md p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+            >
+              <Avatar className="h-9 w-9">
+                {result.avatar_url && <AvatarImage src={result.avatar_url} alt={result.name} />}
+                <AvatarFallback>{result.name.charAt(0).toUpperCase()}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{result.name}</div>
+                <div className="truncate text-xs text-muted-foreground">{result.email}</div>
+              </div>
+              <Button
+                variant="ghost"
+                className="cursor-pointer text-blue-600 hover:bg-blue-100"
+                disabled={addingId === result.id}
+                onClick={() => handleAdd(result.id)}
+              >
+                {addingId === result.id ? "Adding..." : "Add"}
+              </Button>
+            </div>
+          ))}
         </div>
       </DialogContent>
     </Dialog>
