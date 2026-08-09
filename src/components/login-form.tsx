@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import Link from "next/link";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
     try {
       const { user } = await login(parsed.data.email, parsed.data.password);
       setUser(user);
+      toast.success("Welcome back!");
       router.push("/chats");
     } catch (err) {
       setErrorMsg(getErrorMessage(err, "Login failed"));
@@ -63,7 +65,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                 </p>
               </div>
 
-              {errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}
+              {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
 
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
@@ -74,7 +76,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                   required
                   value={formData.email}
                   onChange={handleChange}
-                  className="h-12 transition-all duration-300 ease-in-out focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                  className="h-12"
                 />
               </div>
 
@@ -88,11 +90,11 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                   required
                   value={formData.password}
                   onChange={handleChange}
-                  className="h-12 transition-all duration-300 ease-in-out focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                  className="h-12"
                 />
               </div>
 
-              <Button type="submit" className="w-full cursor-pointer" disabled={submitting}>
+              <Button type="submit" className="w-full cursor-pointer bg-brand text-brand-foreground hover:bg-brand/90" disabled={submitting}>
                 {submitting ? "Logging in..." : "Login"}
               </Button>
 

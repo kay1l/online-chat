@@ -22,6 +22,12 @@ export const endpoints: EndpointType = {
     delete: (id: number | string) => `/contacts/${id}`,
   },
 
+  contactRequests: {
+    list: "/contact-requests",
+    accept: (id: number | string) => `/contact-requests/${id}/accept`,
+    decline: (id: number | string) => `/contact-requests/${id}/decline`,
+  },
+
   messages: {
     fetch: (contactId: number | string) => `/messages/${contactId}`,
     send: "/messages",

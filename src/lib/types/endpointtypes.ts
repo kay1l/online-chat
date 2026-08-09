@@ -14,6 +14,11 @@ export type EndpointType = {
     create: string;
     delete: (id: number | string) => string;
   };
+  contactRequests: {
+    list: string;
+    accept: (id: number | string) => string;
+    decline: (id: number | string) => string;
+  };
   messages: {
     fetch: (contactId: number | string) => string;
     send: string;

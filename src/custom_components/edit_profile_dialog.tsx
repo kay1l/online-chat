@@ -101,7 +101,7 @@ export function EditProfileDialog({ user, onSaved, children }: EditProfileDialog
               alt="Avatar preview"
               className="h-28 w-28 rounded-full object-cover border"
             />
-            <span className="absolute bottom-0 right-0 rounded-full bg-blue-600 p-1">
+            <span className="absolute bottom-0 right-0 rounded-full bg-brand p-1">
               <Pencil className="h-3 w-3 text-white" />
             </span>
           </div>
@@ -114,21 +114,21 @@ export function EditProfileDialog({ user, onSaved, children }: EditProfileDialog
           />
         </div>
 
-        {error && <p className="text-center text-sm text-red-600">{error}</p>}
+        {error && <p className="text-center text-sm text-destructive">{error}</p>}
 
         <div className="space-y-2 mt-4">
           <Input
             placeholder="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="h-10 text-base focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+            className="h-10 text-base"
           />
           <Input
             placeholder="Email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="h-10 text-base focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+            className="h-10 text-base"
           />
         </div>
 
@@ -136,14 +136,14 @@ export function EditProfileDialog({ user, onSaved, children }: EditProfileDialog
           <DialogClose asChild>
             <Button
               variant="ghost"
-              className="w-24 rounded-md hover:bg-blue-200 dark:hover:bg-gray-800 cursor-pointer"
+              className="w-24 rounded-md hover:bg-accent cursor-pointer"
             >
               Cancel
             </Button>
           </DialogClose>
           <Button
             variant="ghost"
-            className="w-24 rounded-md text-blue-600 hover:bg-blue-200 cursor-pointer"
+            className="w-24 rounded-md text-brand hover:bg-accent cursor-pointer"
             disabled={saving}
             onClick={handleSave}
           >

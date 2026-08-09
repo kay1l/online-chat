@@ -1,32 +1,35 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Loader2, UserPlus } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2, Search, UserPlus } from "lucide-react";
 import { addContact, searchUsers } from "@/helpers/chat";
 import { getErrorMessage } from "@/lib/axios";
 import type { SearchResult } from "@/lib/types/models";
 
 interface AddContactDialogProps {
-  onAdded: () => void;
+  /** Refetch contacts and requests once something changes server-side. */
+  onChanged: () => void;
 }
 
-export function AddContactDialog({ onAdded }: AddContactDialogProps) {
+export function AddContactDialog({ onChanged }: AddContactDialogProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
-  const [addingId, setAddingId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
 
   // Debounced search so we aren't firing a request per keystroke.
   useEffect(() => {
@@ -43,9 +46,8 @@ export function AddContactDialog({ onAdded }: AddContactDialogProps) {
     const timer = setTimeout(async () => {
       try {
         setResults(await searchUsers(term));
-        setError(null);
       } catch (err) {
-        setError(getErrorMessage(err, "Search failed"));
+        toast.error(getErrorMessage(err, "Search failed"));
       } finally {
         setSearching(false);
       }
@@ -54,18 +56,29 @@ export function AddContactDialog({ onAdded }: AddContactDialogProps) {
     return () => clearTimeout(timer);
   }, [query, open]);
 
-  const handleAdd = async (userId: number) => {
-    setAddingId(userId);
+  const handleAdd = async (result: SearchResult) => {
+    setBusyId(result.id);
     try {
-      await addContact(userId);
-      setResults((prev) => prev.filter((result) => result.id !== userId));
-      setQuery("");
-      setOpen(false);
-      onAdded();
+      const { status } = await addContact(result.id);
+
+      // Requesting someone who already asked us connects both sides immediately.
+      if (status === "accepted") {
+        toast.success(`You and ${result.name} are now connected`);
+        setResults((prev) => prev.filter((item) => item.id !== result.id));
+      } else {
+        toast.success(`Request sent to ${result.name}`);
+        setResults((prev) =>
+          prev.map((item) =>
+            item.id === result.id ? { ...item, request_status: "sent" } : item
+          )
+        );
+      }
+
+      onChanged();
     } catch (err) {
-      setError(getErrorMessage(err, "Could not add contact"));
+      toast.error(getErrorMessage(err, "Could not send that request"));
     } finally {
-      setAddingId(null);
+      setBusyId(null);
     }
   };
 
@@ -77,7 +90,6 @@ export function AddContactDialog({ onAdded }: AddContactDialogProps) {
         if (!next) {
           setQuery("");
           setResults([]);
-          setError(null);
         }
       }}
     >
@@ -85,65 +97,92 @@ export function AddContactDialog({ onAdded }: AddContactDialogProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="hover:bg-blue-100 cursor-pointer dark:hover:bg-blue-900/30"
+          className="cursor-pointer hover:bg-brand-muted"
+          aria-label="Add new contact"
         >
-          <UserPlus className="h-6 w-6" />
-          <span className="sr-only">Add New Contact</span>
+          <UserPlus className="h-5 w-5" />
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-sm rounded-lg">
-        <DialogHeader className="text-center">
-          <DialogTitle className="text-xl font-bold">Add New Contact</DialogTitle>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add a contact</DialogTitle>
+          <DialogDescription>
+            Search by name or email. They&apos;ll need to accept before you can chat.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 mt-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             autoFocus
-            placeholder="Search by name or email"
+            placeholder="Search people..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="h-12 text-base transition-all duration-300 ease-in-out focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+            className="h-11 pl-9"
           />
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
-        <div className="mt-2 max-h-64 space-y-1 overflow-y-auto">
-          {searching && (
-            <div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Searching...
+        <div className="min-h-[8rem] max-h-72 overflow-y-auto">
+          {searching && results.length === 0 && (
+            <div className="space-y-3 py-2">
+              {[0, 1, 2].map((row) => (
+                <div key={row} className="flex items-center gap-3">
+                  <Skeleton className="h-9 w-9 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-3 w-32" />
+                    <Skeleton className="h-3 w-44" />
+                  </div>
+                </div>
+              ))}
             </div>
+          )}
+
+          {!searching && query.trim() === "" && (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              Start typing to find people.
+            </p>
           )}
 
           {!searching && query.trim() !== "" && results.length === 0 && (
-            <p className="p-2 text-sm text-muted-foreground">No users found.</p>
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              No one matches &ldquo;{query.trim()}&rdquo;.
+            </p>
           )}
 
-          {results.map((result) => (
-            <div
-              key={result.id}
-              className="flex items-center gap-3 rounded-md p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-            >
-              <Avatar className="h-9 w-9">
-                {result.avatar_url && <AvatarImage src={result.avatar_url} alt={result.name} />}
-                <AvatarFallback>{result.name.charAt(0).toUpperCase()}</AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{result.name}</div>
-                <div className="truncate text-xs text-muted-foreground">{result.email}</div>
-              </div>
-              <Button
-                variant="ghost"
-                className="cursor-pointer text-blue-600 hover:bg-blue-100"
-                disabled={addingId === result.id}
-                onClick={() => handleAdd(result.id)}
-              >
-                {addingId === result.id ? "Adding..." : "Add"}
-              </Button>
-            </div>
-          ))}
+          <ul className="divide-y">
+            {results.map((result) => (
+              <li key={result.id} className="flex items-center gap-3 py-2.5">
+                <Avatar className="h-9 w-9">
+                  {result.avatar_url && (
+                    <AvatarImage src={result.avatar_url} alt={result.name} />
+                  )}
+                  <AvatarFallback>{result.name.charAt(0).toUpperCase()}</AvatarFallback>
+                </Avatar>
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{result.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{result.email}</p>
+                </div>
+
+                {busyId === result.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                ) : result.request_status === "sent" ? (
+                  <span className="rounded-md px-2 py-1 text-xs text-muted-foreground">
+                    Requested
+                  </span>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="cursor-pointer bg-brand text-brand-foreground hover:bg-brand/90"
+                    onClick={() => handleAdd(result)}
+                  >
+                    {result.request_status === "incoming" ? "Accept" : "Add"}
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       </DialogContent>
     </Dialog>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import Link from "next/link";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,7 @@ export function RegisterForm({ className, ...props }: React.ComponentProps<"div"
         password_confirmation: parsed.data.confirmPassword,
       });
       setUser(user);
+      toast.success("Account created");
       router.push("/chats");
     } catch (err) {
       setErrorMsg(getErrorMessage(err, "Registration failed"));
@@ -74,7 +76,7 @@ export function RegisterForm({ className, ...props }: React.ComponentProps<"div"
               </div>
 
               {errorMsg && (
-                <p className="text-sm text-red-600 text-center">{errorMsg}</p>
+                <p className="text-sm text-destructive text-center">{errorMsg}</p>
               )}
 
               <div className="grid gap-2">
@@ -85,7 +87,7 @@ export function RegisterForm({ className, ...props }: React.ComponentProps<"div"
                   required
                   value={formData.username}
                   onChange={handleChange}
-                  className="h-12 transition-all duration-300 ease-in-out focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                  className="h-12"
                 />
               </div>
 
@@ -98,7 +100,7 @@ export function RegisterForm({ className, ...props }: React.ComponentProps<"div"
                   required
                   value={formData.email}
                   onChange={handleChange}
-                  className="h-12 transition-all duration-300 ease-in-out focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                  className="h-12"
                 />
               </div>
 
@@ -110,7 +112,7 @@ export function RegisterForm({ className, ...props }: React.ComponentProps<"div"
                   required
                   value={formData.password}
                   onChange={handleChange}
-                  className="h-12 transition-all duration-300 ease-in-out focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                  className="h-12"
                 />
               </div>
 
@@ -122,11 +124,11 @@ export function RegisterForm({ className, ...props }: React.ComponentProps<"div"
                   required
                   value={formData.confirmPassword}
                   onChange={handleChange}
-                  className="h-12 transition-all duration-300 ease-in-out focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                  className="h-12"
                 />
               </div>
 
-              <Button type="submit" className="w-full cursor-pointer" disabled={submitting}>
+              <Button type="submit" className="w-full cursor-pointer bg-brand text-brand-foreground hover:bg-brand/90" disabled={submitting}>
                 {submitting ? "Creating account..." : "Sign up"}
               </Button>
 

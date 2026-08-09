@@ -2,66 +2,85 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Check, CheckCheck, Loader2, MessageCircleMore, Send } from "lucide-react";
 import { Sidebar } from "@/components/app-sidebar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Check, CheckCheck, Loader2, MessageCircleMore, Send } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/custom_components/app_wrapper";
-import { fetchContacts, fetchMessages, sendMessage } from "@/helpers/chat";
+import { fetchContactRequests, fetchContacts, fetchMessages, sendMessage } from "@/helpers/chat";
 import { getErrorMessage } from "@/lib/axios";
-import type { Contact, Message } from "@/lib/types/models";
+import { clockTime, dayLabel, isSameDay, relativeTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import type { Contact, ContactRequest, Message } from "@/lib/types/models";
 
-// Until the app moves to websockets (Laravel Reverb), new messages arrive by polling.
+// Until the app moves to websockets (Laravel Reverb), updates arrive by polling.
 const CONTACTS_POLL_MS = 5000;
 const MESSAGES_POLL_MS = 2500;
 
 type PendingMessage = { tempId: number; content: string; created_at: string };
+
+/** A message plus how it should be laid out relative to its neighbours. */
+type ThreadItem = {
+  message: Message;
+  mine: boolean;
+  showDivider: boolean;
+  /** Last of a run from the same sender — only this one carries the avatar and meta. */
+  endsRun: boolean;
+};
 
 export default function ChatsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [requests, setRequests] = useState<ContactRequest[]>([]);
   const [activeContactId, setActiveContactId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [pending, setPending] = useState<PendingMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [loadingContacts, setLoadingContacts] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Anyone without a valid session belongs on the login screen.
   useEffect(() => {
     if (!authLoading && !user) {
       router.replace("/");
     }
   }, [authLoading, user, router]);
 
-  const loadContacts = useCallback(async () => {
+  const loadSidebar = useCallback(async () => {
     try {
-      setContacts(await fetchContacts());
+      const [nextContacts, nextRequests] = await Promise.all([
+        fetchContacts(),
+        fetchContactRequests(),
+      ]);
+      setContacts(nextContacts);
+      setRequests(nextRequests);
     } catch (err) {
-      setError(getErrorMessage(err, "Could not load contacts"));
+      toast.error(getErrorMessage(err, "Could not load your contacts"));
+    } finally {
+      setLoadingContacts(false);
     }
   }, []);
 
   const loadMessages = useCallback(async (contactId: number) => {
     try {
       setMessages(await fetchMessages(contactId));
-      setError(null);
     } catch (err) {
-      setError(getErrorMessage(err, "Could not load messages"));
+      toast.error(getErrorMessage(err, "Could not load messages"));
     }
   }, []);
 
   useEffect(() => {
     if (!user) return;
-    void loadContacts();
-    const timer = setInterval(() => void loadContacts(), CONTACTS_POLL_MS);
+    void loadSidebar();
+    const timer = setInterval(() => void loadSidebar(), CONTACTS_POLL_MS);
     return () => clearInterval(timer);
-  }, [user, loadContacts]);
+  }, [user, loadSidebar]);
 
   useEffect(() => {
     if (!user || activeContactId === null) return;
@@ -78,12 +97,15 @@ export default function ChatsPage() {
     [contacts, activeContactId]
   );
 
-  const thread = useMemo(
-    () => [
+  // Server messages plus any optimistic ones still in flight.
+  const thread = useMemo<ThreadItem[]>(() => {
+    if (!user) return [];
+
+    const all: Message[] = [
       ...messages,
       ...pending.map<Message>((item) => ({
         id: -item.tempId,
-        sender_id: user?.id ?? 0,
+        sender_id: user.id,
         receiver_id: activeContactId ?? 0,
         content: item.content,
         read_at: null,
@@ -91,9 +113,22 @@ export default function ChatsPage() {
         updated_at: item.created_at,
         pending: true,
       })),
-    ],
-    [messages, pending, user?.id, activeContactId]
-  );
+    ];
+
+    return all.map((message, index) => {
+      const previous = all[index - 1];
+      const next = all[index + 1];
+
+      return {
+        message,
+        mine: message.sender_id === user.id,
+        showDivider:
+          !previous ||
+          !isSameDay(new Date(previous.created_at), new Date(message.created_at)),
+        endsRun: !next || next.sender_id !== message.sender_id,
+      };
+    });
+  }, [messages, pending, user, activeContactId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -103,8 +138,7 @@ export default function ChatsPage() {
     setActiveContactId(id);
     setMessages([]);
     setPending([]);
-    setError(null);
-    // The contact's unread badge clears as soon as the API marks the thread read.
+    // The badge clears as soon as the API marks the thread read.
     setContacts((prev) =>
       prev.map((contact) => (contact.id === id ? { ...contact, unread_count: 0 } : contact))
     );
@@ -123,9 +157,9 @@ export default function ChatsPage() {
       setMessages((prev) =>
         prev.some((existing) => existing.id === message.id) ? prev : [...prev, message]
       );
-      void loadContacts();
+      void loadSidebar();
     } catch (err) {
-      setError(getErrorMessage(err, "Message could not be sent"));
+      toast.error(getErrorMessage(err, "Message could not be sent"));
       setInputValue(content);
     } finally {
       setPending((prev) => prev.filter((item) => item.tempId !== tempId));
@@ -141,157 +175,183 @@ export default function ChatsPage() {
   }
 
   return (
-    <div className="grid min-h-screen grid-cols-1 md:grid-cols-[16rem_1fr] bg-background text-foreground">
+    <div className="grid h-screen grid-cols-1 overflow-hidden bg-background text-foreground md:grid-cols-[18rem_1fr]">
       <Sidebar
         contacts={contacts}
+        requests={requests}
+        loading={loadingContacts}
         activeContactId={activeContactId}
         onSelectChat={handleSelectChat}
-        onContactAdded={loadContacts}
+        onDataChanged={loadSidebar}
       />
 
-      <div className="flex min-h-screen flex-col border-l">
+      <div className="flex h-screen min-w-0 flex-col">
         {activeContact ? (
           <>
-            <header className="flex items-center gap-3 border-b bg-muted px-4 py-3 shadow-sm">
+            <header className="flex shrink-0 items-center gap-3 border-b px-4 py-3 pl-16 md:pl-4">
               <Avatar className="h-9 w-9">
                 {activeContact.avatar_url && (
                   <AvatarImage src={activeContact.avatar_url} alt={activeContact.name} />
                 )}
                 <AvatarFallback>{activeContact.name.charAt(0).toUpperCase()}</AvatarFallback>
               </Avatar>
-              <div>
-                <div className="font-semibold">{activeContact.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {activeContact.is_online ? "Online" : "Offline"}
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold">{activeContact.name}</div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {activeContact.is_online ? (
+                    <>
+                      <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                      Online
+                    </>
+                  ) : activeContact.last_seen_at ? (
+                    `Last seen ${relativeTime(activeContact.last_seen_at)}`
+                  ) : (
+                    "Offline"
+                  )}
                 </div>
               </div>
             </header>
 
-            <main className="relative flex flex-1 flex-col justify-between">
-              <div className="absolute inset-0 -z-10">
-                <div className="h-full w-full bg-[url('/images/chat.jpeg')] bg-cover bg-center opacity-20 dark:opacity-10" />
-              </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+              {loadingMessages && thread.length === 0 ? (
+                <div className="space-y-4">
+                  {[0, 1, 2, 3].map((row) => (
+                    <div
+                      key={row}
+                      className={cn("flex", row % 2 === 0 ? "justify-start" : "justify-end")}
+                    >
+                      <Skeleton
+                        className="h-10 rounded-2xl"
+                        style={{ width: `${140 + ((row * 53) % 120)}px` }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : thread.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                  <MessageCircleMore className="h-10 w-10 opacity-40" />
+                  <p className="text-sm">No messages yet</p>
+                  <p className="text-xs">Say hello to {activeContact.name}.</p>
+                </div>
+              ) : (
+                <div className="mx-auto max-w-3xl space-y-1">
+                  {thread.map(({ message, mine, showDivider, endsRun }) => (
+                    <div key={message.id}>
+                      {showDivider && (
+                        <div className="my-4 flex items-center gap-3">
+                          <div className="h-px flex-1 bg-border" />
+                          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            {dayLabel(message.created_at)}
+                          </span>
+                          <div className="h-px flex-1 bg-border" />
+                        </div>
+                      )}
 
-              <div className="flex-1 space-y-2 overflow-y-auto p-4">
-                {loadingMessages && thread.length === 0 ? (
-                  <div className="flex h-full items-center justify-center text-muted-foreground">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : thread.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center space-y-2 text-muted-foreground">
-                    <MessageCircleMore className="h-8 w-8" />
-                    <span>No messages yet — say hello.</span>
-                  </div>
-                ) : (
-                  thread.map((message) => {
-                    const mine = message.sender_id === user.id;
-
-                    return (
                       <div
-                        key={message.id}
-                        className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}
-                      >
-                        {!mine && (
-                          <Avatar className="h-6 w-6">
-                            {activeContact.avatar_url && (
-                              <AvatarImage
-                                src={activeContact.avatar_url}
-                                alt={activeContact.name}
-                              />
-                            )}
-                            <AvatarFallback className="text-[10px]">
-                              {activeContact.name.charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
+                        className={cn(
+                          "flex items-end gap-2",
+                          mine ? "justify-end" : "justify-start",
+                          endsRun ? "mb-2" : "mb-0.5"
                         )}
+                      >
+                        {!mine &&
+                          (endsRun ? (
+                            <Avatar className="h-7 w-7 shrink-0">
+                              {activeContact.avatar_url && (
+                                <AvatarImage
+                                  src={activeContact.avatar_url}
+                                  alt={activeContact.name}
+                                />
+                              )}
+                              <AvatarFallback className="text-[10px]">
+                                {activeContact.name.charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                          ) : (
+                            <div className="w-7 shrink-0" />
+                          ))}
 
-                        <div className="flex max-w-xs flex-col">
+                        <div
+                          className={cn(
+                            "flex max-w-[75%] flex-col gap-1 sm:max-w-md",
+                            mine ? "items-end" : "items-start"
+                          )}
+                        >
                           <div
-                            className={`inline-block rounded-lg px-3 py-2 text-sm shadow ${
+                            className={cn(
+                              "rounded-2xl px-3.5 py-2 text-sm leading-relaxed break-words",
                               mine
-                                ? "bg-blue-600 text-white"
-                                : "bg-white/90 text-foreground dark:bg-gray-800"
-                            } ${message.pending ? "opacity-70" : ""}`}
+                                ? "bg-brand text-brand-foreground"
+                                : "bg-muted text-foreground",
+                              mine && endsRun && "rounded-br-sm",
+                              !mine && endsRun && "rounded-bl-sm",
+                              message.pending && "opacity-60"
+                            )}
                           >
                             {message.content}
                           </div>
-                          <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                            <span>
-                              {new Date(message.created_at).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                            {mine && !message.pending && (
-                              <span
-                                className={`flex items-center gap-0.5 ${
-                                  message.read_at ? "text-blue-500" : ""
-                                }`}
-                              >
-                                {message.read_at ? (
-                                  <>
-                                    <CheckCheck className="h-3 w-3" /> Seen
-                                  </>
+
+                          {endsRun && (
+                            <div className="flex items-center gap-1 px-1 text-[11px] text-muted-foreground">
+                              <span>{clockTime(message.created_at)}</span>
+                              {mine &&
+                                (message.pending ? (
+                                  <span>· Sending</span>
+                                ) : message.read_at ? (
+                                  <CheckCheck className="h-3.5 w-3.5 text-brand" />
                                 ) : (
-                                  <>
-                                    <Check className="h-3 w-3" /> Sent
-                                  </>
-                                )}
-                              </span>
-                            )}
-                            {mine && message.pending && <span>Sending...</span>}
-                          </div>
+                                  <Check className="h-3.5 w-3.5" />
+                                ))}
+                            </div>
+                          )}
                         </div>
-
-                        {mine && (
-                          <Avatar className="h-6 w-6">
-                            {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} />}
-                            <AvatarFallback className="text-[10px]">
-                              {user.name.charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        )}
                       </div>
-                    );
-                  })
-                )}
-                <div ref={bottomRef} />
-              </div>
-
-              {error && (
-                <p className="px-4 pb-2 text-center text-sm text-red-600">{error}</p>
-              )}
-
-              <div className="mb-6 mt-2 flex justify-center px-4">
-                <div className="flex w-full max-w-xl items-center gap-2">
-                  <Input
-                    placeholder={`Message ${activeContact.name}...`}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    className="h-12"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        void handleSend();
-                      }
-                    }}
-                  />
-                  <Button
-                    className="h-12 w-12 cursor-pointer rounded-md bg-blue-600 text-white hover:bg-blue-700"
-                    onClick={() => void handleSend()}
-                    disabled={inputValue.trim() === ""}
-                  >
-                    <Send className="h-5 w-5" />
-                    <span className="sr-only">Send</span>
-                  </Button>
+                    </div>
+                  ))}
+                  <div ref={bottomRef} />
                 </div>
+              )}
+            </div>
+
+            <div className="shrink-0 border-t px-4 py-3">
+              <div className="mx-auto flex max-w-3xl items-center gap-2">
+                <Input
+                  placeholder={`Message ${activeContact.name}...`}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  className="h-11 rounded-full px-4"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                />
+                <Button
+                  size="icon"
+                  className="h-11 w-11 shrink-0 cursor-pointer rounded-full bg-brand text-brand-foreground hover:bg-brand/90"
+                  onClick={() => void handleSend()}
+                  disabled={inputValue.trim() === ""}
+                  aria-label="Send message"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
               </div>
-            </main>
+            </div>
           </>
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center space-y-2 text-muted-foreground">
-            <MessageCircleMore className="h-8 w-8" />
-            <span>Select a chat to start messaging</span>
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-muted-foreground">
+            <div className="rounded-full bg-muted p-5">
+              <MessageCircleMore className="h-8 w-8 opacity-60" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">Your messages</p>
+              <p className="mt-1 text-sm">
+                {contacts.length === 0
+                  ? "Add a contact to start your first conversation."
+                  : "Select a chat from the sidebar to start messaging."}
+              </p>
+            </div>
           </div>
         )}
       </div>

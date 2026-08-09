@@ -31,12 +31,28 @@ export type Message = {
   pending?: boolean;
 };
 
+/** Null when there is no relationship in flight; otherwise which way it points. */
+export type RequestStatus = "sent" | "incoming" | null;
+
 export type SearchResult = {
   id: number;
   name: string;
   email: string;
   avatar_url: string | null;
   is_online: boolean;
+  request_status: RequestStatus;
+};
+
+/** An incoming contact request awaiting the current user's answer. */
+export type ContactRequest = {
+  id: number;
+  created_at: string;
+  user: {
+    id: number;
+    name: string;
+    avatar_url: string | null;
+    is_online: boolean;
+  };
 };
 
 export type AuthResponse = {
