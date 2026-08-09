@@ -20,13 +20,30 @@ import type { User } from "@/lib/types/models";
 interface EditProfileDialogProps {
   user: User;
   onSaved: (user: User) => void;
-  children: React.ReactNode;
+  /** Trigger element. Omit when driving the dialog with `open`/`onOpenChange`. */
+  children?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 const FALLBACK_AVATAR = "/images/avatar.jpeg";
 
-export function EditProfileDialog({ user, onSaved, children }: EditProfileDialogProps) {
-  const [open, setOpen] = useState(false);
+export function EditProfileDialog({
+  user,
+  onSaved,
+  children,
+  open: controlledOpen,
+  onOpenChange,
+}: EditProfileDialogProps) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+
+  // Controlled when a parent passes `open`, self-managed otherwise.
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : uncontrolledOpen;
+  const setOpen = (next: boolean) => {
+    if (!isControlled) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  };
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [avatarPreview, setAvatarPreview] = useState(user.avatar_url ?? FALLBACK_AVATAR);
@@ -82,7 +99,7 @@ export function EditProfileDialog({ user, onSaved, children }: EditProfileDialog
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
+      {children && <DialogTrigger asChild>{children}</DialogTrigger>}
 
       <DialogContent className="sm:max-w-sm rounded-lg">
         <DialogHeader className="text-center">

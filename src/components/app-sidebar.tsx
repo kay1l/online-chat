@@ -1,46 +1,35 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { toast } from "sonner";
-import { LogOut, Menu, Pencil, Search, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddContactDialog } from "@/custom_components/add_contact_dialog";
-import { EditProfileDialog } from "@/custom_components/edit_profile_dialog";
-import { NotificationBell } from "@/custom_components/notification_bell";
-import { ThemeToggle } from "@/custom_components/theme_toggle";
 import { cn } from "@/lib/utils";
 import { listTime } from "@/lib/format";
-import { logout } from "@/helpers/auth";
-import { useAuth } from "@/custom_components/app_wrapper";
-import type { Contact, ContactRequest, User } from "@/lib/types/models";
+import type { Contact } from "@/lib/types/models";
 
 interface SidebarProps {
-  className?: string;
   contacts: Contact[];
-  requests: ContactRequest[];
   loading: boolean;
   activeContactId: number | null;
   onSelectChat: (id: number) => void;
-  onDataChanged: () => void;
+  onContactAdded: () => void;
+  /** Drawer state on small screens; the navbar owns the trigger. */
+  mobileOpen: boolean;
+  onMobileClose: () => void;
 }
 
 export function Sidebar({
-  className,
   contacts,
-  requests,
   loading,
   activeContactId,
   onSelectChat,
-  onDataChanged,
+  onContactAdded,
+  mobileOpen,
+  onMobileClose,
 }: SidebarProps) {
-  const router = useRouter();
-  const { user, setUser } = useAuth();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [filter, setFilter] = useState("");
 
   const visibleContacts = useMemo(() => {
@@ -49,58 +38,14 @@ export function Sidebar({
     return contacts.filter((contact) => contact.name.toLowerCase().includes(term));
   }, [contacts, filter]);
 
-  const handleLogout = async () => {
-    await logout();
-    setUser(null);
-    toast.success("Signed out");
-    router.push("/");
-  };
-
-  const handleProfileSaved = (updated: User) => {
-    setUser(updated);
-    toast.success("Profile updated");
-  };
-
-  const SidebarContent = (
+  const content = (
     <>
-      <div className="mb-5 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Image
-            src="/images/icon.jpeg"
-            alt=""
-            width={36}
-            height={36}
-            className="h-9 w-9 rounded-md object-contain"
-          />
-          <span className="text-lg font-semibold tracking-tight">NexChat</span>
-        </div>
-        <div className="flex items-center gap-0.5">
-          <NotificationBell requests={requests} onAnswered={onDataChanged} />
-          <AddContactDialog onChanged={onDataChanged} />
-          <ThemeToggle />
-        </div>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Chats
+        </h2>
+        <AddContactDialog onChanged={onContactAdded} />
       </div>
-
-      {user && (
-        <EditProfileDialog user={user} onSaved={handleProfileSaved}>
-          <button
-            type="button"
-            className="mb-4 flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-accent cursor-pointer"
-          >
-            <Avatar className="h-10 w-10">
-              {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} />}
-              <AvatarFallback className="bg-brand text-brand-foreground">
-                {user.name.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{user.name}</div>
-              <div className="text-xs text-muted-foreground">Edit profile</div>
-            </div>
-            <Pencil className="h-4 w-4 shrink-0 text-muted-foreground" />
-          </button>
-        </EditProfileDialog>
-      )}
 
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -141,10 +86,10 @@ export function Sidebar({
                 type="button"
                 onClick={() => {
                   onSelectChat(contact.id);
-                  setMobileOpen(false);
+                  onMobileClose();
                 }}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors cursor-pointer",
+                  "flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors",
                   active ? "bg-brand-muted" : "hover:bg-accent"
                 )}
               >
@@ -153,9 +98,7 @@ export function Sidebar({
                     {contact.avatar_url && (
                       <AvatarImage src={contact.avatar_url} alt={contact.name} />
                     )}
-                    <AvatarFallback>
-                      {contact.name.charAt(0).toUpperCase()}
-                    </AvatarFallback>
+                    <AvatarFallback>{contact.name.charAt(0).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   {contact.is_online && (
                     <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-background bg-success" />
@@ -199,60 +142,31 @@ export function Sidebar({
           })
         )}
       </nav>
-
-      <Button
-        variant="ghost"
-        className="mt-3 w-full cursor-pointer justify-start gap-2 text-muted-foreground hover:text-destructive"
-        onClick={handleLogout}
-      >
-        <LogOut className="h-4 w-4" />
-        Sign out
-      </Button>
     </>
   );
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside
-        className={cn(
-          "hidden h-screen w-72 flex-col border-r bg-sidebar p-4 md:flex",
-          className
-        )}
-      >
-        {SidebarContent}
-      </aside>
-
-      {/* Mobile trigger */}
-      <button
-        type="button"
-        className="fixed left-4 top-4 z-30 rounded-lg border bg-background p-2 shadow-sm md:hidden cursor-pointer"
-        onClick={() => setMobileOpen(true)}
-        aria-label="Open menu"
-      >
-        <Menu className="h-5 w-5" />
-        {requests.length + contacts.reduce((sum, c) => sum + c.unread_count, 0) > 0 && (
-          <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-brand" />
-        )}
-      </button>
+      {/* Desktop */}
+      <aside className="hidden w-72 flex-col border-r bg-sidebar p-4 md:flex">{content}</aside>
 
       {/* Mobile drawer */}
       {mobileOpen && (
         <>
           <div
             className="fixed inset-0 z-40 bg-black/50 md:hidden"
-            onClick={() => setMobileOpen(false)}
+            onClick={onMobileClose}
           />
           <aside className="fixed left-0 top-0 z-50 flex h-full w-72 flex-col border-r bg-sidebar p-4 md:hidden">
             <button
               type="button"
               className="absolute right-3 top-3 cursor-pointer text-muted-foreground"
-              onClick={() => setMobileOpen(false)}
-              aria-label="Close menu"
+              onClick={onMobileClose}
+              aria-label="Close chats"
             >
               <X className="h-5 w-5" />
             </button>
-            {SidebarContent}
+            {content}
           </aside>
         </>
       )}
